@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440  # 24h
     app_env: str = "development"
-    cors_origins: str = "http://localhost:3000,http://localhost:8000"
+    cors_origins: str = "*"  # Allow all origins in development; restrict in production via .env
     sentry_dsn: str = ""
 
     @property

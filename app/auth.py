@@ -37,17 +37,22 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
 # ── Password helpers ──────────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    import bcrypt as _bcrypt
+    return _bcrypt.hashpw(plain.encode(), _bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    # Also accept legacy sha256 hashes from the old SQLite app during migration
     import hashlib
+    import bcrypt as _bcrypt
+    # Legacy SHA-256 check
     legacy = hashlib.sha256(plain.encode()).hexdigest()
     if hashed == legacy:
         return True
-    return pwd_context.verify(plain, hashed)
-
+    # Direct bcrypt check (bypasses passlib)
+    try:
+        return _bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return False
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: almatour
+      POSTGRES_PASSWORD: almatour
+      POSTGRES_DB: almatour
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      # Override DATABASE_URL for local docker compose
+      DATABASE_URL: postgresql+asyncpg://almatour:almatour@db:5432/almatour
+      JWT_SECRET_KEY: local-dev-secret
+      APP_ENV: development
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app   # live reload during dev
+
+volumes:
+  pg_data:

@@ -288,6 +288,28 @@ async def get_my_bookings(
     return {"bookings": result}
 
 
+@app.delete("/bookings/{booking_id}", tags=["Bookings"])
+async def cancel_booking(
+    booking_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_permission("cancel:booking_own")),
+):
+    """Cancel and delete a booking. Restores seats to the tour."""
+    try:
+        result = await crud.cancel_booking_atomic(db, booking_id, user["user_id"], user["role"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    
+    await crud.write_audit(
+        db, user["user_id"], user["email"], "CANCEL_BOOKING", "booking", booking_id,
+        details={"seats_freed": result["seats_freed"], "tour_id": result["tour_id"]},
+        ip_address=client_ip(request),
+    )
+    await db.commit()
+    return {"status": "success", "message": "Booking cancelled successfully", **result}
+
+
 # ── Analytics ─────────────────────────────────────────────────────────────────
 
 @app.get("/analytics/h3", tags=["Analytics"])

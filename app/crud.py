@@ -153,6 +153,50 @@ async def create_booking_atomic(
     return booking, tour  # return tour so caller has h3_region
 
 
+async def cancel_booking_atomic(
+    db: AsyncSession, booking_id: int, tourist_id: int, user_role: str
+) -> dict:
+    """
+    Cancel and delete a booking. Uses SELECT ... FOR UPDATE to prevent race conditions.
+    Returns the relative number of seats freed up.
+    """
+    # Lock the booking's tour row
+    result = await db.execute(
+        select(Booking)
+        .where(Booking.id == booking_id)
+    )
+    booking = result.scalar_one_or_none()
+    if booking is None:
+        raise ValueError("Booking not found")
+
+    # Check authorization
+    if booking.tourist_id != tourist_id and user_role != "admin":
+        raise ValueError("Not authorized to cancel this booking")
+
+    # Lock the tour row and restore seats
+    result = await db.execute(
+        select(Tour)
+        .where(Tour.id == booking.tour_id)
+        .with_for_update()
+    )
+    tour = result.scalar_one_or_none()
+    if tour is None:
+        raise ValueError("Tour not found")
+
+    # Restore seats
+    tour.seats_available += booking.seats_booked
+
+    # Delete the booking
+    await db.delete(booking)
+    await db.flush()
+
+    return {
+        "booking_id": booking.id,
+        "seats_freed": booking.seats_booked,
+        "tour_id": booking.tour_id,
+    }
+
+
 async def my_bookings(db: AsyncSession, tourist_id: int) -> list:
     from sqlalchemy.orm import joinedload
     result = await db.execute(

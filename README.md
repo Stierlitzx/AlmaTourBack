@@ -205,6 +205,7 @@ The smoke test covers:
 - `GET /tours`
 - `POST /bookings`
 - `GET /bookings/me`
+- `DELETE /bookings/{booking_id}`
 
 You can change `baseUrl`, credentials, or runtime variables (`token`, `tourId`, `bookingId`) in the environment.
 
@@ -227,6 +228,7 @@ You can change `baseUrl`, credentials, or runtime variables (`token`, `tourId`, 
 
 - `POST /bookings`
 - `GET /bookings/me`
+- `DELETE /bookings/{booking_id}`
 
 ### Analytics / admin
 

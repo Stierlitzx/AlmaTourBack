@@ -87,6 +87,8 @@ async def create_tour(db: AsyncSession, body: TourCreate, guide_id: int) -> Tour
         description=body.description,
         guide_id=guide_id,
         price=body.price,
+        image_url=body.image_url,
+        badge=body.badge,
         capacity=body.capacity,
         seats_available=body.capacity,
         lat=body.lat,

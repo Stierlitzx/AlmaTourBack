@@ -22,6 +22,8 @@ class TourCreate(BaseModel):
     title: str = Field(min_length=3, max_length=255)
     description: str = Field(max_length=4000)
     price: float = Field(gt=0, le=10_000_000)
+    image_url: Optional[str] = None
+    badge: Optional[str] = "Nature"
     capacity: int = Field(gt=0, le=10_000)
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
@@ -41,6 +43,8 @@ class TourOut(BaseModel):
     title: str
     description: Optional[str]
     guide_id: Optional[int]
+    image_url: Optional[str] = None
+    badge: Optional[str] = None
     price: float
     capacity: int
     seats_available: int

@@ -18,7 +18,7 @@ from app.auth import (
     assert_guide_owns_tour,
     create_access_token,
     require_permission,
-    verify_password,
+    verify_password, hash_password,
 )
 from app.config import get_settings
 from app.database import engine, get_db
@@ -31,6 +31,7 @@ from app.schemas import (
     BookingResponse,
     H3RegionStat,
     LoginRequest,
+    RegisterRequest,
     TokenResponse,
     TourCreate,
     TourOut,
@@ -137,6 +138,30 @@ async def login(
         db, user.id, user.email, "LOGIN", "session",
         details={"role": user.role}, ip_address=client_ip(request),
     )
+    await db.commit()
+    return TokenResponse(token=token, role=user.role, name=user.name)
+
+@app.post("/auth/register", response_model=TokenResponse, status_code=201, tags=["Auth"])
+async def register(
+    req: RegisterRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await crud.get_user_by_email(db, req.email)
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    from app.models import User
+    user = User(
+        email=req.email,
+        password_hash=hash_password(req.password),
+        role="tourist",
+        name=req.name,
+    )
+    db.add(user)
+    await db.flush()
+    token = create_access_token({"sub": str(user.id), "role": user.role})
+    await crud.write_audit(db, user.id, user.email, "REGISTER", "user", user.id,
+                           ip_address=client_ip(request))
     await db.commit()
     return TokenResponse(token=token, role=user.role, name=user.name)
 

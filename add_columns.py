@@ -7,14 +7,14 @@ async def main():
     conn = await asyncpg.connect(dsn, ssl='require')
     try:
         await conn.execute("ALTER TABLE tours ADD COLUMN image_url TEXT")
-        print('Added image_url column')
-    except Exception as e:
-        print('image_url already exists:', e)
+        print('Added image_url')
+    except:
+        print('image_url already exists')
     try:
         await conn.execute("ALTER TABLE tours ADD COLUMN badge VARCHAR(50) DEFAULT 'Nature'")
-        print('Added badge column')
-    except Exception as e:
-        print('badge already exists:', e)
+        print('Added badge')
+    except:
+        print('badge already exists')
     await conn.close()
 
 asyncio.run(main())

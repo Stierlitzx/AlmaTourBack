@@ -1,0 +1,218 @@
+{
+  "info": {
+    "_postman_id": "5d1b2a1f-5b7c-4c91-9b16-2b2e5be0a001",
+    "name": "AlmaTour Smoke Test",
+    "description": "Smoke test for the AlmaTour API: health, login, tours, booking, and my bookings.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/health",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Health response is ok\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.deep.equal({ status: 'ok' });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\":\"{{email}}\",\"password\":\"{{password}}\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Login response contains token, role, and name\", function () {",
+              "  pm.expect(json).to.have.property('token');",
+              "  pm.expect(json).to.have.property('role');",
+              "  pm.expect(json).to.have.property('name');",
+              "});",
+              "",
+              "pm.environment.set('token', json.token);",
+              "pm.environment.set('role', json.role);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List Tours",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/tours"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Tours response contains totals and tours array\", function () {",
+              "  pm.expect(json).to.have.property('total');",
+              "  pm.expect(json).to.have.property('tours');",
+              "  pm.expect(json.tours).to.be.an('array');",
+              "});",
+              "",
+              "pm.test(\"At least one tour is returned\", function () {",
+              "  pm.expect(json.tours.length).to.be.greaterThan(0);",
+              "});",
+              "",
+              "pm.environment.set('tourId', json.tours[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Booking",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"tour_id\":{{tourId}},\"seats\":1}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/bookings"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Booking response contains booking_id, total_price, and status\", function () {",
+              "  pm.expect(json).to.have.property('booking_id');",
+              "  pm.expect(json).to.have.property('total_price');",
+              "  pm.expect(json).to.have.property('status');",
+              "});",
+              "",
+              "pm.environment.set('bookingId', json.booking_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "My Bookings",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/bookings/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Bookings response contains an array\", function () {",
+              "  pm.expect(json).to.have.property('bookings');",
+              "  pm.expect(json.bookings).to.be.an('array');",
+              "});",
+              "",
+              "pm.test(\"Created booking is present\", function () {",
+              "  const bookingId = pm.environment.get('bookingId');",
+              "  pm.expect(json.bookings.some(function (booking) {",
+              "    return String(booking.id) === String(bookingId);",
+              "  })).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+

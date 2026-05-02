@@ -1,244 +1,335 @@
-# AlmaTour — Async FastAPI + PostgreSQL/Neon Backend
+# AlmaTour — Async FastAPI + PostgreSQL/Neon backend
 
-Production-ready rewrite of the AlmaTour backend.  
-SQLite + synchronous SQLAlchemy → **async SQLAlchemy 2.0 + asyncpg + Neon Serverless Postgres**.
+This repository contains the current AlmaTour backend implementation:
+
+- FastAPI 0.111
+- async SQLAlchemy 2.0 + asyncpg
+- PostgreSQL / Neon Serverless Postgres
+- JWT authentication with bcrypt passwords
+- H3-based spatial filtering and analytics
 
 ---
 
-## Project Structure
+## Project structure
 
-```
-almatour-pg/
+```text
+AlmaTourBack/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py          # FastAPI app, all routes, middleware
-│   ├── config.py        # Settings via pydantic-settings (.env)
-│   ├── database.py      # Async engine + session factory
-│   ├── models.py        # SQLAlchemy ORM models
-│   ├── schemas.py       # Pydantic v2 request/response schemas
-│   ├── auth.py          # JWT, bcrypt, RBAC/ABAC dependencies
-│   ├── crud.py          # Async DB operations (transaction-safe)
-│   └── events.py        # Background analytics worker
+│   ├── main.py        # FastAPI app, routes, middleware, lifespan
+│   ├── config.py      # Settings loaded from .env
+│   ├── database.py    # Async engine + session factory
+│   ├── models.py      # SQLAlchemy ORM models
+│   ├── schemas.py     # Pydantic request/response models
+│   ├── auth.py        # JWT, bcrypt, RBAC/ABAC helpers
+│   ├── crud.py        # Async DB operations
+│   └── events.py      # Background analytics task
 ├── alembic/
-│   ├── env.py           # Async-aware Alembic config
-│   ├── script.py.mako
+│   ├── env.py
 │   └── versions/
-│       └── 0001_initial_schema.py   # Tables + indexes + seed data
+│       └── 0001_initial_schema.py
 ├── tests/
-│   ├── conftest.py      # Pytest fixtures (in-memory SQLite)
+│   ├── conftest.py
 │   ├── test_auth.py
 │   ├── test_tours.py
-│   └── test_bookings.py # Includes race-condition test
+│   └── test_bookings.py
 ├── .github/workflows/ci.yml
-├── migrate_sqlite_to_pg.py   # One-shot SQLite → Postgres migration
+├── docker-compose.yml
 ├── Dockerfile
-├── docker-compose.yml        # Local dev (Postgres container)
-├── alembic.ini
+├── migrate_sqlite_to_pg.py
 ├── requirements.txt
 ├── pytest.ini
 ├── .env.example
-└── .gitignore
+└── utility scripts (e.g. `seed_tours.py`, `check_tours.py`, `fix_passwords.py`)
 ```
 
 ---
 
-## Seed Credentials
+## Environment setup
 
-| Role    | Email                  | Password    |
-|---------|------------------------|-------------|
-| admin   | admin@almatour.kz      | admin123    |
-| guide   | guide@almatour.kz      | guide123    |
-| tourist | tourist@almatour.kz    | tourist123  |
+Copy the example file and configure your database connection:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+On macOS/Linux the equivalent command is:
+
+```bash
+cp .env.example .env
+```
+
+Important variables:
+
+- `DATABASE_URL` — PostgreSQL/Neon connection string
+- `JWT_SECRET_KEY` — long random secret for JWT signing
+- `APP_ENV` — `development` / `test` / `production`
+- `CORS_ORIGINS` — comma-separated allowed origins
+
+### Neon / PostgreSQL URL format
+
+The app accepts URLs such as:
+
+```text
+postgresql+asyncpg://user:pass@host/dbname?ssl=require
+```
+
+It also normalizes common Neon-style URLs that use `postgres://` or `sslmode=require`.
 
 ---
 
-## Quick Start — Local (Docker Compose)
+## Run locally with Docker Compose
 
 ```bash
-# 1. Clone and configure
-cp .env.example .env
-# Edit .env — for local docker-compose the DATABASE_URL is overridden automatically
-
-# 2. Start Postgres + API
 docker compose up --build
-
-# 3. Migrations run automatically on startup (CMD in Dockerfile)
-# To run manually:
-docker compose exec api alembic upgrade head
-
-# 4. API docs
-open http://localhost:8000/docs
 ```
 
----
+This starts:
 
-## Quick Start — Neon (Production)
+- Postgres on `localhost:5432`
+- API on `localhost:8000`
+
+Open the docs at:
+
+```text
+http://localhost:8000/docs
+```
+
+### Note about startup behavior
+
+The current `Dockerfile` starts the app with `alembic stamp head` and then launches Uvicorn.
+The application itself also verifies the ORM tables on startup via `Base.metadata.create_all()`.
+
+If you want to apply the Alembic migration manually on a fresh database, run:
 
 ```bash
-# 1. Get your Neon connection string from console.neon.tech
-# Format: postgresql+asyncpg://user:pass@ep-xxx.region.aws.neon.tech/dbname?ssl=require
-
-# 2. Set up .env
-cp .env.example .env
-# Fill in DATABASE_URL with your Neon string
-# Fill in JWT_SECRET_KEY with a long random string (openssl rand -hex 32)
-
-# 3. Install deps
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 4. Apply migrations (creates all tables + seed users/tours)
 alembic upgrade head
-
-# 5. Run
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-### Neon SSL note
-asyncpg requires SSL for Neon. Your `DATABASE_URL` must include `?ssl=require`:
-```
-DATABASE_URL=postgresql+asyncpg://neondb_owner:PASSWORD@ep-xxx.eu-central-1.aws.neon.tech/neondb?ssl=require
 ```
 
 ---
 
-## Migrate Data from SQLite → Neon
+## Run locally without Docker
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+If you are using Windows PowerShell, remember that the virtual environment activation command is:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+---
+
+## Database and migrations
+
+The initial schema and demo seed data live in:
+
+- `alembic/versions/0001_initial_schema.py`
+
+That migration creates the following tables:
+
+- `users`
+- `tours`
+- `bookings`
+- `audit_log`
+- `h3_region_analytics`
+- `sessions`
+
+It also seeds demo users and tours.
+
+### Demo credentials
+
+| Role | Email | Password |
+|---|---|---|
+| admin | `admin@almatour.kz` | `admin123` |
+| guide | `guide@almatour.kz` | `guide123` |
+| tourist | `tourist@almatour.kz` | `tourist123` |
+
+---
+
+## Migrating data from the legacy SQLite app
+
+The repo includes a one-shot helper:
 
 ```bash
-# 1. Make sure alembic upgrade head has already been run
-# 2. Run the migration script pointing at your old DB file
 python migrate_sqlite_to_pg.py --sqlite src/almatour.db
 ```
 
-The script reads all tables from SQLite and upserts them into Postgres,
-skipping conflicts. Password hashes are migrated as-is (SHA-256 from the old
-app). `app/auth.py` includes a legacy SHA-256 fallback so existing users can
-still log in. After migration, encourage users to change passwords so their
-hashes are upgraded to bcrypt automatically on next login.
+What it does:
+
+- reads `users`, `tours`, `bookings`, `audit_log`, and `h3_region_analytics`
+- upserts rows into Postgres
+- keeps legacy password hashes as-is
+
+The current auth code can verify both bcrypt and legacy SHA-256 hashes.
 
 ---
 
-## Running Tests
+## Running tests
+
+The test suite uses in-memory SQLite and does not require a real Postgres instance.
+
+Install the extra test dependency used by the fixtures:
 
 ```bash
-pip install aiosqlite  # needed for in-memory SQLite in tests
+pip install aiosqlite
+```
+
+Then run:
+
+```bash
 pytest -v
 ```
 
-Tests use an in-memory SQLite database — no Postgres needed locally.
+`pytest.ini` enables asyncio auto mode and points pytest at `tests/`.
 
 ---
 
-## API Endpoints
+## Postman smoke test
+
+Import these files into Postman:
+
+- `postman/AlmaTour_smoke_test.postman_collection.json`
+- `postman/AlmaTour_local.postman_environment.json`
+
+Then select the `AlmaTour Local` environment and run the collection top to bottom.
+
+The smoke test covers:
+
+- `GET /health`
+- `POST /auth/login`
+- `GET /tours`
+- `POST /bookings`
+- `GET /bookings/me`
+
+You can change `baseUrl`, credentials, or runtime variables (`token`, `tourId`, `bookingId`) in the environment.
+
+---
+
+## API overview
 
 ### Auth
-```bash
-# Login → get JWT token
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"tourist@almatour.kz","password":"tourist123"}'
-# → {"token":"eyJ...","role":"tourist","name":"James Smith"}
 
-export TOKEN="eyJ..."
-```
+- `POST /auth/login`
+- `POST /auth/register`
 
 ### Tours
-```bash
-# List all active tours (paginated)
-curl http://localhost:8000/tours \
-  -H "Authorization: Bearer $TOKEN"
 
-# Search tours by text
-curl "http://localhost:8000/tours?search_text=Canyon" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Spatial query — tours within 15km of a coordinate
-curl "http://localhost:8000/tours?lat=43.25&lng=76.94&radius_km=15" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Filter by H3 region
-curl "http://localhost:8000/tours?h3_region=85304c49fffffff" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Create a tour (guide/admin only)
-curl -X POST http://localhost:8000/tours \
-  -H "Authorization: Bearer $GUIDE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Kaindy Lake Trek",
-    "description": "Crystal clear lake with submerged trees",
-    "price": 60000,
-    "capacity": 12,
-    "lat": 42.9917,
-    "lng": 78.4600,
-    "location_name": "Kaindy Lake",
-    "schedule_date": "2026-08-15"
-  }'
-```
+- `GET /tours`
+- `POST /tours`
+- `PATCH /tours/{tour_id}`
 
 ### Bookings
-```bash
-# Book a tour
-curl -X POST http://localhost:8000/bookings \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"tour_id": 1, "seats": 2}'
 
-# My bookings
-curl http://localhost:8000/bookings/me \
-  -H "Authorization: Bearer $TOKEN"
+- `POST /bookings`
+- `GET /bookings/me`
+
+### Analytics / admin
+
+- `GET /analytics/h3`
+- `GET /admin/audit-log`
+
+### Meta
+
+- `GET /health`
+- `GET /` redirects to `/docs`
+
+---
+
+## Example requests
+
+### Login
+
+```powershell
+curl.exe -X POST http://localhost:8000/auth/login -H "Content-Type: application/json" -d '{"email":"tourist@almatour.kz","password":"tourist123"}'
 ```
 
-### Admin
-```bash
-# H3 analytics (admin only)
-curl http://localhost:8000/analytics/h3 \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
+The response contains `token`, `role`, and `name`.
 
-# Audit log
-curl http://localhost:8000/admin/audit-log \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
+### Register
+
+```powershell
+curl.exe -X POST http://localhost:8000/auth/register -H "Content-Type: application/json" -d '{"name":"New Tourist","email":"new@example.com","password":"secret123"}'
+```
+
+### List tours
+
+```powershell
+curl.exe http://localhost:8000/tours -H "Authorization: Bearer $TOKEN"
+```
+
+Supported query params:
+
+- `search_text`
+- `h3_region`
+- `lat`, `lng`, `radius_km`
+- `page`, `per_page`
+
+### Create a tour
+
+```powershell
+curl.exe -X POST http://localhost:8000/tours -H "Authorization: Bearer $GUIDE_TOKEN" -H "Content-Type: application/json" -d '{"title":"Kaindy Lake Trek","description":"Crystal clear lake with submerged trees","price":60000,"capacity":12,"lat":42.9917,"lng":78.46,"location_name":"Kaindy Lake","schedule_date":"2026-08-15"}'
+```
+
+### Book a tour
+
+```powershell
+curl.exe -X POST http://localhost:8000/bookings -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"tour_id":1,"seats":2}'
+```
+
+### My bookings
+
+```powershell
+curl.exe http://localhost:8000/bookings/me -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
-## Architecture Decisions
+## Authorization model
 
-### Why async SQLAlchemy 2.0 + asyncpg?
-FastAPI is async-first. Synchronous SQLAlchemy blocks the event loop on every
-DB call, creating a bottleneck under concurrent load. The async engine lets the
-server handle other requests while waiting for DB I/O.
+The app uses JWT bearer tokens and role-based permissions:
 
-### Race condition fix: SELECT ... FOR UPDATE
-The original SQLite app had a race condition: two simultaneous booking requests
-could both pass the `seats_available >= seats` check before either decremented.
-The fix uses Postgres row-level locking:
-```python
-select(Tour).where(...).with_for_update()
+- `tourist` can read tours and create bookings
+- `guide` can create tours and update their own tours
+- `admin` can access analytics and the audit log
+
+Booking seat counts are protected with `SELECT ... FOR UPDATE` to avoid overbooking under concurrent load.
+
+---
+
+## CI
+
+The GitHub Actions workflow runs:
+
+- dependency installation
+- `ruff check app/ tests/`
+- `pytest -v`
+
+---
+
+## Useful files
+
+- `app/main.py` — API routes and middleware
+- `app/auth.py` — JWT + role checks
+- `app/crud.py` — database operations
+- `app/config.py` — environment handling
+- `alembic/versions/0001_initial_schema.py` — schema and seed data
+- `tests/conftest.py` — async SQLite test fixtures
+
+---
+
+## Health check
+
+```powershell
+curl.exe http://localhost:8000/health
 ```
-This acquires an exclusive lock on the tour row for the duration of the
-transaction. The second concurrent request blocks until the first commits,
-then sees the updated seat count and correctly returns 400.
 
-### Background analytics worker
-**Dev (current):** FastAPI `BackgroundTasks` — runs after the response is
-sent, zero extra dependencies.  
-**Production recommendation:** Replace with **ARQ** (async Redis queue):
-```bash
-pip install arq redis
-# Define worker, push jobs via arq.create_pool()
-# Run separately: arq app.worker.WorkerSettings
+Expected response:
+
+```json
+{"status":"ok"}
 ```
-This survives server crashes, supports retries, and scales independently.
-
-### JWT vs session tokens
-The original app stored opaque tokens in a `sessions` DB table (requiring a
-DB lookup on every request). This version uses **signed JWT tokens** — the
-server verifies the signature cryptographically with no DB round-trip per
-request. The `sessions` table is kept in the schema for potential legacy
-compatibility.
-
-### Neon serverless
-Neon's serverless Postgres scales to zero between requests, making it ideal for
-a student/demo deployment. The `pool_pre_ping=True` on the engine handles
-cold-start reconnection transparently.
